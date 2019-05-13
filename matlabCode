@@ -1,0 +1,118 @@
+function modellNyomasSzabalyozo
+clear variables; close all;
+global nn a0 a1 a2 n
+global p0 ro g
+global lambda L1 D1 A1 L2 D2 A2 dzeta Hv
+global p3kiv Qkiv
+
+g=9.81;
+ro=1000;
+L1=50; L2=100;
+D1=32e-3; D2=25e-3;
+A1=D1^2*pi/4; A2=D1^2*pi/4;
+lambda=0.02; dzeta=3;
+p0=0;
+Hv=20;
+
+Qjglmin=0:10:120; %l/min
+Qjg=Qjglmin/1000/60; %m^2/s
+Hjg=[80,78,75,72.5,70,67,63,59,52.5,46,41,35,29]; %m
+jgPol=polyfit(Qjg,Hjg,2);
+a2=jgPol(1); a1=jgPol(2); a0=jgPol(3);
+
+nn=3000; n=3000;
+
+p3kiv=2*10^5; %bar
+Qkiv=60/60e3; % l/perc
+
+%tmax=10; tt=0; dt=0.1; %Q control
+tmax=5; tt=0; dt=0.05; %p control
+
+%P=00000; I=0; D=0; %Q control
+P=0.001; I=0.000005; D=0.0001; %p control
+
+p30=0; Q0=0;
+tout=[];
+Qout=[]; pout=[];
+nout=[];
+eout=[];
+delta=0; %dn=50
+np=3000;
+
+while tt<tmax
+    %e=Qkiv-Q0; %error, Q control
+    e=p3kiv-p30; %error, p control
+    eout=[eout;e];
+    
+    
+    errorsize=size(eout);    
+    if(errorsize(1)>2)
+        delta=eout(errorsize(1)-1)-eout(end);
+    end
+    
+    n=np+(P*e+I*sum(dt*eout)+D*delta/dt);
+     if (n>4000)
+         n=4000;
+     end
+     if(n<000)
+         n=000;
+     end
+     
+    [t,Q]=ode45(@ODE_Pump,[tt tt+dt],Q0);
+    
+    Qout=[Qout;Q];
+    Q0=Q(end);
+    [lenght, ~]=size(Qout);
+    
+    p30=p0+(dzeta+lambda*L2/D2)*ro/2/A2^2*Q0^2+ro*L2/A2*(Q0-Qout(lenght-1))/dt;
+    
+    tout=[tout;t];
+    nout=[nout;n*ones(size(t))];
+    pout=[pout;p30*ones(size(t))];
+    
+    p30=pout(end);    
+    tt=tt+dt;
+    np=n;
+end
+
+Qstac=Q(end);
+Hstac=Hsz(Qstac);
+
+fprintf('\n n=%5.3f rpm, Qstac=%g l/min\n',n,Qstac*60e3);
+
+figure(1)
+subplot(3,1,1)
+plot(tout,Qout*1000*60), grid on
+xlabel('t (s)'), ylabel('Q (l/perc)')
+
+subplot(3,1,2)
+plot(tout,nout), grid on
+xlabel('t (s)'), ylabel('n (f/perc)')
+
+subplot(3,1,3)
+plot(tout,pout), grid on
+xlabel('t (s)'), ylabel('p (Pa)')
+
+% subplot(3,1,3)
+% QQ=linspace(0,120)/60e3;
+% HH=Hsz(QQ);
+% plot(QQ*60e3,HH,Qstac*60e3,Hstac,'r*'), grid on
+% xlabel('Q (l/perc)'), ylabel('H (m)'), legend(['n=',num2str(n),'f/perc'])
+end
+
+function dQdt=ODE_Pump(t,y)
+global p0 ro g
+global lambda L1 D1 A1 L2 D2 A2 dzeta Hv
+Q=y(1);
+p2=p0+ro*g*Hsz(Q);
+K1=p2-ro*g*Hv-p0;
+K2=ro/2*(lambda*L1/D1/A1^2+(dzeta+lambda*L2/D2)/A2^2);
+K3=ro*L1/A1+ro*L2/A2;
+dQdt=(K1-K2*Q^2)/K3;
+end
+
+function out = Hsz(Q)
+global nn a0 a1 a2 n
+
+out=a0*(n/nn)^2+a1*n/nn*Q+a2*Q.^2;
+end
